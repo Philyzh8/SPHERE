@@ -57,12 +57,13 @@ $ conda env create -f environment.yaml
 ```
 
 # Usage
-:page_facing_up: `SPHERE` is a dual graph contrastive learning method for identifing spatial domains, which can be used to:
-+ DLPFC. The example can be seen in the <a href="https://github.com/Philyzh8/stDCL/blob/master/tutorial/run_dlpfc.py">run_dlpfc.py</a>.
-+ MERFISH. The example can be seen in the <a href="https://github.com/Philyzh8/stDCL/blob/master/tutorial/run_merfish.py">run_merfish.py</a> and <a href="https://github.com/Philyzh8/stDCL/blob/master/tutorial/run_merfish_brain.py">run_merfish_brain.py</a>.
-+ osmFISH. The example can be seen in the <a href="https://github.com/Philyzh8/stDCL/blob/master/tutorial/run_osm.py">run_osm.py</a>.
-+ STARmap. The example can be seen in the <a href="https://github.com/Philyzh8/stDCL/blob/master/tutorial/run_starmap.py">run_starmap.py</a> and <a href="https://github.com/Philyzh8/stDCL/blob/master/tutorial/run_starmap_plus.py">run_starmap_plus.py</a>.
-
+:page_facing_up: `SPHERE` is a unified framework that models each slice with spatial and regulatory graphs, fuses them via attention, and enforces cross-slice manifold consistency to mitigate platform-specific biases while preserving developmental progression, which can be used to:
++ <a href="https://github.com/Philyzh8/SPHERE/tree/master/Tutorial/Tutorial1%3A%20platform-agnostic%20structural%20consistency">Tutorial1</a>. platform-agnostic structural consistency.
++ <a href="https://github.com/Philyzh8/SPHERE/tree/master/Tutorial/Tutorial2%3A%20spatiotemporal%20integration">Tutorial2</a>. platform-agnostic structural consistency.
++ <a href="[https://github.com/Philyzh8/stDCL/blob/master/tutorial/run_dlpfc.py](https://github.com/Philyzh8/SPHERE/tree/master/Tutorial/Tutorial1%3A%20platform-agnostic%20structural%20consistency)">Tutorial3</a>. platform-agnostic structural consistency.
++ <a href="[https://github.com/Philyzh8/stDCL/blob/master/tutorial/run_dlpfc.py](https://github.com/Philyzh8/SPHERE/tree/master/Tutorial/Tutorial1%3A%20platform-agnostic%20structural%20consistency)">Tutorial4</a>. platform-agnostic structural consistency.
++ <a href="[https://github.com/Philyzh8/stDCL/blob/master/tutorial/run_dlpfc.py](https://github.com/Philyzh8/SPHERE/tree/master/Tutorial/Tutorial1%3A%20platform-agnostic%20structural%20consistency)">Tutorial5</a>. platform-agnostic structural consistency.
++ 
 :page_facing_up: We also provide <a href="https://github.com/Philyzh8/stDCL/tree/master/step-by-step">step-by-step</a> tutorials to analyze spatial transcriptomic datasets.
 
 
