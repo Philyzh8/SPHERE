@@ -68,6 +68,6 @@ $ conda env create -f environment.yaml
 
 # License
 
-This project is covered under the <a href="https://github.com/Philyzh8/stDCL/blob/master/LICENSE">**MIT License**</a>.
+This project is covered under the <a href="https://github.com/Philyzh8/SPHERE/blob/master/LICENSE">**MIT License**</a>.
 
 
