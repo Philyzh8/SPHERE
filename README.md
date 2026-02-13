@@ -25,7 +25,7 @@ Spatial epigenomic technologies offer unprecedented opportunities to profile reg
 ## Software requirements
 ### OS Requirements
 This package is supported for *Linux*. The package has been tested on the following systems:
-+ Linux: Ubuntu 18.04
++ Linux: Ubuntu 22.04
 
 ### Python Dependencies
 `SPHERE` mainly depends on the Python scientific stack.
