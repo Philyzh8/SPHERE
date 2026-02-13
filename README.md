@@ -37,7 +37,7 @@ scikit-learn
 pandas
 scanpy
 ```
-For specific setting, please see <a href="https://github.com/Philyzh8/stDCL/blob/master/requirements.txt">requirements</a> or <a href="https://github.com/Philyzh8/stDCL/blob/master/environment.yaml">environment</a>.
+For specific setting, please see <a href="https://github.com/Philyzh8/SPHERE/blob/master/requirements.txt">requirements</a> or <a href="https://github.com/Philyzh8/SPHERE/blob/master/environment.yaml">environment</a>.
 
 # Installation Guide:
 
