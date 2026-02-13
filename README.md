@@ -63,8 +63,6 @@ $ conda env create -f environment.yaml
 + <a href="https://github.com/Philyzh8/SPHERE/tree/master/Tutorial/Tutorial3%3A%20omni-platform%20spatiotemporal%20integration">Tutorial3</a>. omni-platform spatiotemporal integration.
 + <a href="https://github.com/Philyzh8/SPHERE/tree/master/Tutorial/Tutorial4%3A%20panoramic%20annotation">Tutorial4</a>. panoramic annotation.
 + <a href="[https://github.com/Philyzh8/stDCL/blob/master/tutorial/run_dlpfc.py](https://github.com/Philyzh8/SPHERE/tree/master/Tutorial/Tutorial1%3A%20platform-agnostic%20structural%20consistency)">Tutorial5</a>. platform-agnostic structural consistency.
-+ 
-:page_facing_up: We also provide <a href="https://github.com/Philyzh8/stDCL/tree/master/step-by-step">step-by-step</a> tutorials to analyze spatial transcriptomic datasets.
 
 
 # License
