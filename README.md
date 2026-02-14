@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
-`SPHERE` is a Python package containing tools for identifing spatial domains from spatial transcriptomics data based on a dual graph contrastive learning method.
+`SPHERE` is a unified computational framework designed to address PaSS for fragmented spatial epigenomes.
 
 - [Overview](#overview)
 - [System Requirements](#system-requirements)
@@ -46,7 +46,6 @@ For specific setting, please see <a href="https://github.com/Philyzh8/SPHERE/blo
 $ conda create -n SPHERE_env python=3.8.15
 $ conda activate SPHERE_env
 $ pip install -r requirements.txt
-$ pip install SPHERE
 ```
 
 ### Install from Conda
