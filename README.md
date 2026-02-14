@@ -1,6 +1,5 @@
 # SPHERE
 
-[![PyPI - Python Version](https://img.shields.io/pypi/v/stDCL)](https://pypi.org/project/stDCL/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
 `SPHERE` is a Python package containing tools for identifing spatial domains from spatial transcriptomics data based on a dual graph contrastive learning method.
