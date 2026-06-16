@@ -24,6 +24,7 @@ class SPHERE:
         deconvolution = False,
         integrate = False,
         alignment = False,
+        scale = False,
         pretrain = True,
         batch_label = None,
         slice_name_list = None,
@@ -88,42 +89,64 @@ class SPHERE:
 
         # dataset
         self.adata = self.data
-        
-        if not alignment:
+
+        if scale:
             self.features = torch.FloatTensor(self.adata.obsm['feat'].copy()).to(self.device)
-            self.n_cell = self.adata.n_obs
             self.dim_input = self.features.shape[1]
+            self.n_cell = self.adata.n_obs
+            adj_data = adjacent_matrix_preprocessing_scale(self.adata)
+            self.adj_spatial = adj_data['adj_spatial'].to(self.device)
+            self.adj_feature = adj_data['adj_feature'].to(self.device)
+            self.adj_combined = adj_data['adj_combined'].to(self.device)
+
+            self.batch_labels = torch.FloatTensor(batch_label).to(self.device)
+            self.n_cls = batch_label.shape[1]
+            self.slice_index = np.zeros((self.n_cell, ))
+            slice_name_list = slice_name_list
+            self.indices = [0]
+            idx = 0
+            for i in range(self.n_cls):
+                idx += self.adata[self.adata.obs['slice_name']==slice_name_list[i]].shape[0]
+                self.indices.append(idx)
+                self.slice_index[self.indices[-2]:self.indices[-1]] = i
+
+        else:
+        
+            if not alignment:
+                self.features = torch.FloatTensor(self.adata.obsm['feat'].copy()).to(self.device)
+                self.n_cell = self.adata.n_obs
+                self.dim_input = self.features.shape[1]
 
 
-            # task
-            if not deconvolution:
-                self.adj = adjacent_matrix_preprocessing(self.adata)
-                self.adj_spatial = self.adj['adj_spatial'].to(self.device)
-                self.adj_feature = self.adj['adj_feature'].to(self.device)
-                self.adj_combined = self.adj['adj_combined'].to(self.device)
+                # task
+                if not deconvolution:
+                    self.adj = adjacent_matrix_preprocessing(self.adata)
+                    self.adj_spatial = self.adj['adj_spatial'].to(self.device)
+                    self.adj_feature = self.adj['adj_feature'].to(self.device)
+                    self.adj_combined = self.adj['adj_combined'].to(self.device)
 
-                if integrate:
-                    self.batch_labels = torch.FloatTensor(batch_label).to(self.device)
-                    self.n_cls = batch_label.shape[1]
-                    self.slice_index = np.zeros((self.n_cell, ))
-                    slice_name_list = slice_name_list
-                    self.indices = [0]
-                    idx = 0
-                    for i in range(self.n_cls):
-                        idx += self.adata[self.adata.obs['slice_name']==slice_name_list[i]].shape[0]
-                        self.indices.append(idx)
-                        self.slice_index[self.indices[-2]:self.indices[-1]] = i
+                    if integrate:
+                        self.batch_labels = torch.FloatTensor(batch_label).to(self.device)
+                        self.n_cls = batch_label.shape[1]
+                        self.slice_index = np.zeros((self.n_cell, ))
+                        slice_name_list = slice_name_list
+                        self.indices = [0]
+                        idx = 0
+                        for i in range(self.n_cls):
+                            idx += self.adata[self.adata.obs['slice_name']==slice_name_list[i]].shape[0]
+                            self.indices.append(idx)
+                            self.slice_index[self.indices[-2]:self.indices[-1]] = i
 
-            else:
-                self.adata_sc = data_sc.copy()
-                self.adj = adjacent_matrix_preprocessing_decon(self.adata, self.adata_sc)
-                self.adj_spatial = self.adj['adj_spatial'].to(self.device)
-                self.adj_feature = self.adj['adj_feature'].to(self.device)
+                else:
+                    self.adata_sc = data_sc.copy()
+                    self.adj = adjacent_matrix_preprocessing_decon(self.adata, self.adata_sc)
+                    self.adj_spatial = self.adj['adj_spatial'].to(self.device)
+                    self.adj_feature = self.adj['adj_feature'].to(self.device)
 
-                self.features_sc = torch.FloatTensor(self.adata_sc.obsm['feat'].copy()).to(self.device)
-                self.labels_sc = torch.FloatTensor(self.adata_sc.obsm['label'].values.astype(np.float32)).to(self.device)
-                self.clusters = np.array(self.adata_sc.obsm['label'].columns)
-                self.celltype_dims = len(self.clusters)
+                    self.features_sc = torch.FloatTensor(self.adata_sc.obsm['feat'].copy()).to(self.device)
+                    self.labels_sc = torch.FloatTensor(self.adata_sc.obsm['label'].values.astype(np.float32)).to(self.device)
+                    self.clusters = np.array(self.adata_sc.obsm['label'].columns)
+                    self.celltype_dims = len(self.clusters)
 
     def train(self):
         self.model = AttnAE(self.dim_input, self.dim_hid, self.dim_output, self.device).to(self.device)
@@ -488,6 +511,222 @@ class SPHERE:
         return H.T
 
     
+    def train_inte_scale(self, batch_size=2048):
+        import torch
+        import torch.nn.functional as F
+        from torch.utils.data import DataLoader
+        from tqdm import tqdm
+        import scipy.sparse as sp
+        import numpy as np
+        import gc
+
+        def normalize_sub_adj(adj_tensor):
+            adj = adj_tensor + torch.eye(adj_tensor.size(0)).to(adj_tensor.device)
+            rowsum = adj.sum(1)
+            d_inv_sqrt = torch.pow(rowsum, -0.5)
+            d_inv_sqrt[torch.isinf(d_inv_sqrt)] = 0.
+            d_mat_inv_sqrt = torch.diag(d_inv_sqrt)
+            return torch.mm(torch.mm(d_mat_inv_sqrt, adj), d_mat_inv_sqrt)
+
+        if not hasattr(self, 'model'):
+            self.model = AttnAE_scale(self.dim_input, self.dim_hid, self.dim_output, self.device, 
+                                      dropout=0.1, add_act=True, inte=True, scale=True).to(self.device)
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
         
+        def to_scipy_cpu(adj):
+            if torch.is_tensor(adj) and adj.is_sparse:
+                adj = adj.coalesce().cpu()
+                return sp.csr_matrix((adj.values().numpy(), adj.indices().numpy()), shape=adj.shape)
+            return adj
+
+        adj_s_csr = to_scipy_cpu(self.adj_spatial)
+        adj_f_csr = to_scipy_cpu(self.adj_feature)
+        
+        sampler = StratifiedBatchSampler(self.indices, batch_size)
+        loader = DataLoader(range(self.n_cell), batch_sampler=sampler)
+
+
+        for epoch in range(self.epochs):
+            self.model.train()
+            pbar = tqdm(loader, desc=f"Epoch {epoch+1}/{self.epochs}")
+            
+            for batch_indices in pbar:
+                batch_indices_cpu = np.array(batch_indices)
+                batch_tensor = torch.tensor(batch_indices_cpu).long().to(self.device)
+                
+                x_b_raw = self.features[batch_indices_cpu]
+                if torch.is_tensor(x_b_raw):
+                    x_b = x_b_raw.to(self.device).float()
+                elif sp.issparse(x_b_raw):
+                    x_b = torch.from_numpy(x_b_raw.toarray()).float().to(self.device)
+                else:
+                    x_b = torch.from_numpy(x_b_raw).float().to(self.device)
+
+                sub_s_raw = torch.from_numpy(adj_s_csr[batch_indices_cpu, :][:, batch_indices_cpu].toarray()).float()
+                sub_f_raw = torch.from_numpy(adj_f_csr[batch_indices_cpu, :][:, batch_indices_cpu].toarray()).float()
+                sub_s_norm = normalize_sub_adj(sub_s_raw).to(self.device)
+                sub_f_norm = normalize_sub_adj(sub_f_raw).to(self.device)
+                
+                z_s_b = self.model.encoder(x_b, sub_s_norm)
+                z_f_b = self.model.encoder(x_b, sub_f_norm)
+                z_b = self.model.atten(z_s_b, z_f_b, None)
+                recon_b = self.model.decoder(z_b, sub_f_norm)
+
+                labels_b = self.batch_labels[batch_tensor].argmax(dim=1) if self.batch_labels.dim() > 1 else self.batch_labels[batch_tensor]
+                
+                l_align = self.mmd_loss_scale(z_b, labels_b)
+                
+                with torch.no_grad():
+                    z_b_norm = F.normalize(z_b, p=2, dim=1)
+                    sim_m = torch.mm(z_b_norm, z_b_norm.t())
+                    mask = (labels_b.unsqueeze(0) != labels_b.unsqueeze(1)).float()
+                    sim_m = sim_m * mask - (1 - mask) * 1e9
+                    _, knn_idx = sim_m.topk(min(20, sim_m.size(1)), dim=1)
+                    rand_idx = torch.randint(0, z_b.size(0), (z_b.size(0), min(20, z_b.size(0)))).to(self.device)
+
+                l_latent = torch.mean(F.relu(torch.norm(z_b.unsqueeze(1)-z_b[knn_idx], p=2, dim=2) - 
+                                            torch.norm(z_b.unsqueeze(1)-z_b[rand_idx], p=2, dim=2) + 0.5))
+                l_recon_feat = F.mse_loss(recon_b, x_b)
+                rec_s, rec_f = self.model.encoder.dc(z_s_b), self.model.encoder.dc(z_f_b)
+                l_graph = self.lambda_spa_recon * F.mse_loss(rec_s, sub_s_raw.to(self.device)) + \
+                          self.lambda_fea_recon * F.mse_loss(rec_f, sub_f_raw.to(self.device))
+                l_con = self.correlation_reduction_loss(self.cross_correlation(z_s_b, z_f_b))
+
+                loss = self.lambda_recon * (l_recon_feat + l_graph) + self.lambda_con * l_con + \
+                       self.lambda_align * l_align + self.lambda_latent * l_latent
+
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                
+                pbar.set_postfix({'loss': f"{loss.item():.4f}"})
+                del x_b, z_b, z_s_b, z_f_b, recon_b, sub_s_norm, sub_f_norm, loss
+            
+            torch.cuda.empty_cache()
+            gc.collect()
+
+        self.model.eval()
+        all_l = []
+        with torch.no_grad():
+            for idxs in DataLoader(range(self.n_cell), batch_size=batch_size * 4):
+                xi = self.features[idxs].to(self.device).float()
+                ii_adj = torch.eye(xi.size(0)).to(self.device).to_sparse()
+                zi = self.model.encoder(xi, ii_adj)
+                if isinstance(zi, tuple): zi = zi[0]
+                all_l.append(zi.cpu())
+        
+        return {'latent': F.normalize(torch.cat(all_l), p=2, dim=1).numpy()}
     
+    def mmd_loss_scale(self, x, labels):
+        unique_batches = torch.unique(labels)
+        if len(unique_batches) < 2:
+            return torch.tensor(0.0, device=x.device, requires_grad=True)
+
+        loss = 0.0
+        pair_count = 0
+        centroids = []
+        for b_id in unique_batches:
+            mask = (labels == b_id)
+            if mask.sum() > 1:
+                centroids.append(x[mask].mean(0))
+        
+        if len(centroids) < 2:
+            return torch.tensor(0.0, device=x.device, requires_grad=True)
+            
+        for i in range(len(centroids)):
+            for j in range(i + 1, len(centroids)):
+                loss += torch.norm(centroids[i] - centroids[j], p=2)
+                pair_count += 1
+                
+        return loss / pair_count
+    
+    def train_query_frozen(self, batch_size=2048, query_epochs=10):
+        from torch.utils.data import DataLoader
+        for name, param in self.model.named_parameters():
+            if 'encoder' in name:
+                param.requires_grad = False
+            else:
+                param.requires_grad = True 
+                
+        active_params = [p for p in self.model.parameters() if p.requires_grad]
+        optimizer = torch.optim.Adam(active_params, lr=self.learning_rate * 0.1)
+        
+        def to_scipy_local(adj):
+            if torch.is_tensor(adj) and adj.is_sparse:
+                adj = adj.coalesce()
+                return sp.csr_matrix((adj.values().cpu().numpy(), adj.indices().cpu().numpy()), shape=adj.shape)
+            return adj
+
+        adj_s_csr = to_scipy_local(self.adj_spatial)
+        adj_f_csr = to_scipy_local(self.adj_feature)
+
+        sampler = StratifiedBatchSampler(self.indices, batch_size)
+        loader = DataLoader(range(self.n_cell), batch_sampler=sampler)
+
+        print(f"🔒 Architecture Lock active. Mapping query seamlessly...")
+        for epoch in range(query_epochs):
+            self.model.train()
+            for name, param in self.model.named_parameters():
+                if 'encoder' in name: param.requires_grad = False
+                
+            pbar = tqdm(loader, desc=f"Query Epoch {epoch+1}/{query_epochs}")
+            for batch_indices in pbar:
+                batch_indices_cpu = np.array(batch_indices)
+                sub_s = adj_s_csr[batch_indices_cpu, :][:, batch_indices_cpu].toarray()
+                sub_f = adj_f_csr[batch_indices_cpu, :][:, batch_indices_cpu].toarray()
+                
+                adj_s_true = torch.from_numpy(sub_s).float().to(self.device)
+                adj_f_true = torch.from_numpy(sub_f).float().to(self.device)
+                batch_tensor = torch.tensor(batch_indices_cpu).long().to(self.device)
+                
+                
+                z_s_b = self.model.encoder(self.features[batch_tensor].to(self.device).float(), adj_s_true)
+                z_f_b = self.model.encoder(self.features[batch_tensor].to(self.device).float(), adj_f_true)
+                z_b = self.model.atten(z_s_b, z_f_b, None)
+
+                recon_b = self.model.decoder(z_b, adj_f_true)
+                
+                labels_b = self.batch_labels[batch_tensor].argmax(dim=1) if self.batch_labels.dim() > 1 else self.batch_labels[batch_tensor]
+
+                with torch.no_grad():
+                    z_b_norm = F.normalize(z_b, p=2, dim=1)
+                    sim_matrix = torch.mm(z_b_norm, z_b_norm.t())
+                    mask_cross = (labels_b.unsqueeze(0) != labels_b.unsqueeze(1)).float()
+                    sim_matrix_cross = sim_matrix * mask_cross - (1 - mask_cross) * 1e9
+                    k_batch = min(20, sim_matrix_cross.size(1))
+                    _, knn_idx_b = sim_matrix_cross.topk(k_batch, dim=1)
+                    rand_idx_b = torch.randint(0, z_b.size(0), (z_b.size(0), k_batch)).to(self.device)
+
+                l_latent = torch.mean(F.relu(torch.norm(z_b.unsqueeze(1) - z_b[knn_idx_b], p=2, dim=2) - 
+                                        torch.norm(z_b.unsqueeze(1) - z_b[rand_idx_b], p=2, dim=2) + 0.5))
+                # l_recon_feat = F.mse_loss(results['recon'][batch_tensor], self.features[batch_tensor])
+                l_recon_feat = F.mse_loss(recon_b, self.features[batch_tensor].to(self.device).float())
+                rec_s, rec_f = self.model.encoder.dc(z_s_b), self.model.encoder.dc(z_f_b)
+                l_graph = self.lambda_spa_recon * F.mse_loss(rec_s, adj_s_true) + \
+                        self.lambda_fea_recon * F.mse_loss(rec_f, adj_f_true)
+                l_con = self.correlation_reduction_loss(self.cross_correlation(z_s_b, z_f_b))
+                l_align = self.mmd_loss_scale(z_b, labels_b)
+
+                loss = (self.lambda_recon * (l_recon_feat + l_graph) + self.lambda_con * l_con + 
+                        self.lambda_align * l_align + self.lambda_latent * l_latent)
+
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                pbar.set_postfix({'loss': f"{loss.item():.4f}"})
+                del loss, adj_s_true, adj_f_true
+                
+            
+        self.model.eval()
+        all_l = []
+        with torch.no_grad():
+            for idxs in DataLoader(range(self.n_cell), batch_size=batch_size * 4):
+                xi = self.features[idxs].to(self.device).float()
+                ii_adj = torch.eye(xi.size(0)).to(self.device).to_sparse()
+                zi = self.model.encoder(xi, ii_adj)
+                if isinstance(zi, tuple): zi = zi[0]
+                all_l.append(zi.cpu())
+        
+        return {'latent': F.normalize(torch.cat(all_l), p=2, dim=1).numpy()}
+
     
