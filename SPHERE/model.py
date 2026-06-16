@@ -179,3 +179,85 @@ def align(A1, A2, X1, X2, H, sepRwrIter, prodRwrIter, alpha, beta, gamma, inIter
 
 
 
+
+class AttnAE_scale(Module):
+    def __init__(self, in_feat, hid_feat, out_feat, device, dropout=0.1, add_act=False, inte=False, scale=False):
+        super(AttnAE_scale, self).__init__()
+        self.scale = scale 
+        self.encoder = Encoder_scale(in_feat, hid_feat, out_feat, add_act=add_act, scale=scale)
+        self.decoder = Decoder(out_feat, hid_feat, in_feat, add_act=add_act)
+        self.atten = MultiHeadCombinedAttentionLayer(out_feat, 8, device, dropout=dropout, inte=inte)
+        
+    def forward(self, features, adj_spatial, adj_feature, adj_combined):
+
+        latent_spatial, spatial_rec = self.encoder(features, adj_spatial)  
+        latent_feature, feature_rec = self.encoder(features, adj_feature)
+        
+        latent = self.atten(latent_spatial, latent_feature, adj_combined)
+
+        recon = self.decoder(latent, adj_feature)
+
+        return {
+            'latent': latent, 'recon': recon,
+            'latent_spatial': latent_spatial, 'latent_feature': latent_feature,
+            'spatial_rec': spatial_rec, 'feature_rec': feature_rec
+        }
+
+class Encoder_scale(Module): 
+    def __init__(self, in_feat, hid_feat, out_feat, dropout=0.0, add_act=False, act=nn.ReLU(), scale=False):
+        super(Encoder_scale, self).__init__()
+        self.in_feat = in_feat
+        self.hid_feat = hid_feat
+        self.out_feat = out_feat
+        self.add_act = add_act
+        self.act = act
+        self.scale = scale
+
+        self.weight1 = Parameter(torch.FloatTensor(self.in_feat, self.hid_feat))
+        self.weight2 = Parameter(torch.FloatTensor(self.hid_feat, self.out_feat))
+        
+        self.dc = InnerProductDecoder(0.0, act=nn.Sigmoid())
+        
+        torch.nn.init.xavier_uniform_(self.weight1)
+        torch.nn.init.xavier_uniform_(self.weight2)
+        
+    def forward(self, feat, adj):
+
+        x = torch.mm(feat.float(), self.weight1)
+        x = torch.spmm(adj, x) 
+        if self.add_act: 
+            x = self.act(x)
+        
+        x = torch.mm(x, self.weight2)
+        x = torch.spmm(adj, x)
+
+        return x
+
+
+import numpy as np
+from torch.utils.data import Sampler
+
+class StratifiedBatchSampler(Sampler):
+    def __init__(self, indices_list, batch_size):
+        self.indices_list = indices_list 
+        self.batch_size = batch_size
+        self.n_cls = len(indices_list) - 1
+        self.counts = [indices_list[i+1] - indices_list[i] for i in range(self.n_cls)]
+        self.total = sum(self.counts)
+        self.batch_counts = [max(1, int((c / self.total) * batch_size)) for c in self.counts]
+        
+    def __iter__(self):
+        pools = [np.random.permutation(np.arange(self.indices_list[i], self.indices_list[i+1])) 
+                 for i in range(self.n_cls)]
+        ptrs = [0] * self.n_cls
+        
+        while all(ptrs[i] + self.batch_counts[i] <= self.counts[i] for i in range(self.n_cls)):
+            batch = []
+            for i in range(self.n_cls):
+                batch.extend(pools[i][ptrs[i] : ptrs[i] + self.batch_counts[i]])
+                ptrs[i] += self.batch_counts[i]
+            np.random.shuffle(batch)
+            yield batch
+
+    def __len__(self):
+        return self.total // self.batch_size
