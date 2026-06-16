@@ -57,11 +57,13 @@ $ conda env create -f environment.yaml
 
 # Usage
 :page_facing_up: `SPHERE` is a unified framework that models each slice with spatial and regulatory graphs, fuses them via attention, and enforces cross-slice manifold consistency to mitigate platform-specific biases while preserving developmental progression, which can be used to:
-+ <a href="https://github.com/Philyzh8/SPHERE/tree/master/Tutorial/Tutorial1%3A%20platform-agnostic%20structural%20consistency">Tutorial1</a>. platform-agnostic structural consistency.
-+ <a href="https://github.com/Philyzh8/SPHERE/tree/master/Tutorial/Tutorial2%3A%20spatiotemporal%20integration">Tutorial2</a>. spatiotemporal integration.
-+ <a href="https://github.com/Philyzh8/SPHERE/tree/master/Tutorial/Tutorial3%3A%20omni-platform%20spatiotemporal%20integration">Tutorial3</a>. omni-platform spatiotemporal integration.
-+ <a href="https://github.com/Philyzh8/SPHERE/tree/master/Tutorial/Tutorial4%3A%20panoramic%20annotation">Tutorial4</a>. panoramic annotation.
-+ <a href="https://github.com/Philyzh8/SPHERE/tree/master/Tutorial/Tutorial5%3A%20panoramic%20reconstruction">Tutorial5</a>. panoramic reconstruction.
++ <a href="https://github.com/Philyzh8/SPHERE/tree/master/Tutorial/Tutorial1%3A%20Platform-agnostic%20structural%20consistency">Tutorial1</a>. Platform-agnostic structural consistency.
++ <a href="https://github.com/Philyzh8/SPHERE/tree/master/Tutorial/Tutorial2%3A%20Developmental%20continuity%20across%20stages">Tutorial2</a>. Developmental continuity across stages.
++ <a href="https://github.com/Philyzh8/SPHERE/tree/master/Tutorial/Tutorial3%3A%20Omni-platform%20spatiotemporal%20panoramic%20completion">Tutorial3</a>. Omni-platform spatiotemporal panoramic completion.
++ <a href="https://github.com/Philyzh8/SPHERE/tree/master/Tutorial/Tutorial4%3A%20Multi-million-bin%20cross-resolution%20spatial%20maps/Cerebellum">Tutorial4</a>. Multi-million-bin cross-resolution spatial maps.
++ <a href="https://github.com/Philyzh8/SPHERE/tree/master/Tutorial/Tutorial5%3A%20Insert%20held-out%20fragments">Tutorial5</a>. Insert held-out fragments.
++ <a href="https://github.com/Philyzh8/SPHERE/tree/master/Tutorial/Tutorial6%3A%20Panoramic%20reconstruction">Tutorial6</a>. Panoramic reconstruction.
++ <a href="https://github.com/Philyzh8/SPHERE/tree/master/Tutorial/Tutorial7%3A%20Panoramic%20annotation">Tutorial7</a>. Panoramic annotation.
 
 
 # License
