@@ -75,6 +75,97 @@ def construct_neighbor_graph_inte(adata, slice_name_list, loc_neighbors=6, gene_
     
     return adata
 
+
+
+def construct_neighbor_graph_inte_scale(adata, slice_name_list, loc_neighbors=6, gene_neighbors=20):
+    from scipy.sparse import csr_matrix, coo_matrix
+    from sklearn.neighbors import NearestNeighbors, kneighbors_graph
+    import numpy as np
+
+    # --- 1. 空间图 (Spatial Graph) ---
+    spatial_rows = []
+    spatial_cols = []
+    current_offset = 0
+    
+    for slice_name in slice_name_list:
+        coords = adata[adata.obs['slice_name'] == slice_name].obsm['spatial']
+        # 空间坐标通常只有2-3维，精确搜索非常快，没必要用近似
+        nbrs = NearestNeighbors(n_neighbors=loc_neighbors+1, algorithm='kd_tree', n_jobs=-1).fit(coords)
+        _, indices = nbrs.kneighbors(coords)
+        
+        # 构建 COO 格式所需的行列索引
+        row = np.repeat(np.arange(coords.shape[0]), loc_neighbors)
+        col = indices[:, 1:].flatten()
+        
+        spatial_rows.append(row + current_offset)
+        spatial_cols.append(col + current_offset)
+        current_offset += coords.shape[0]
+
+    # 合并并构建初始稀疏矩阵
+    adj_spatial = coo_matrix((np.ones(len(np.concatenate(spatial_rows))), 
+                             (np.concatenate(spatial_rows), np.concatenate(spatial_cols))), 
+                             shape=(adata.n_obs, adata.n_obs)).tocsr()
+    
+    # 【关键：对称化与二值化】 对应原版 adj = adj + adj.T 且 np.where > 1
+    adj_spatial = adj_spatial + adj_spatial.transpose()
+    adj_spatial.data = np.ones_like(adj_spatial.data) # 快速二值化
+    
+    adata.uns['adj_spatial_sparse'] = adj_spatial 
+
+    # --- 2. 特征图 (Feature Graph) ---
+    print(f"Constructing feature graph for {adata.n_obs} spots...")
+    data_feat = adata.obsm['feat']
+    
+    # 自动切换：小规模用精确搜索，大规模用 pynndescent
+    if adata.n_obs < 20000:
+        adj_feature = kneighbors_graph(data_feat, gene_neighbors, mode='connectivity', 
+                                       metric='correlation', include_self=False, n_jobs=-1)
+    else:
+        from pynndescent import NNDescent
+        index = NNDescent(data_feat, metric='correlation', n_neighbors=gene_neighbors + 1, n_jobs=-1)
+        indices, _ = index.query(data_feat, k=gene_neighbors + 1)
+        
+        f_rows = np.repeat(np.arange(adata.n_obs), gene_neighbors)
+        f_cols = indices[:, 1:].flatten()
+        adj_feature = coo_matrix((np.ones(f_rows.size), (f_rows, f_cols)), 
+                                 shape=(adata.n_obs, adata.n_obs)).tocsr()
+    
+    # 【关键：对称化与二值化】
+    adj_feature = adj_feature + adj_feature.transpose()
+    adj_feature.data = np.ones_like(adj_feature.data)
+    
+    adata.obsm['adj_feature'] = adj_feature
+    adata.obsm['adj_combined'] = adj_feature
+    
+    return adata
+
+def adjacent_matrix_preprocessing_scale(adata):
+    import scipy.sparse as sp
+    import torch
+    
+    def sparse_preprocess(indices_mat):
+        # 1. 添加自连接 (A + I)
+        adj_i = indices_mat + sp.eye(indices_mat.shape[0])
+        
+        # 2. 计算对称度归一化 D^-0.5 * A * D^-0.5
+        rowsum = np.array(adj_i.sum(1))
+        d_inv_sqrt = np.power(rowsum, -0.5).flatten()
+        d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.
+        d_mat_inv_sqrt = sp.diags(d_inv_sqrt)
+        
+        adj_normalized = d_mat_inv_sqrt.dot(adj_i).dot(d_mat_inv_sqrt).tocoo()
+        
+        # 3. 转为 torch 稀疏张量
+        indices = torch.from_numpy(np.vstack((adj_normalized.row, adj_normalized.col)).astype(np.int64))
+        values = torch.from_numpy(adj_normalized.data.astype(np.float32))
+        return torch.sparse_coo_tensor(indices, values, torch.Size(adj_normalized.shape))
+
+    return {
+        'adj_spatial': sparse_preprocess(adata.uns['adj_spatial_sparse']),
+        'adj_feature': sparse_preprocess(adata.obsm['adj_feature']),
+        'adj_combined': sparse_preprocess(adata.obsm['adj_combined'])
+    }
+
 def construct_neighbor_graph_decon(adata_st, adata_sc, loc_neighbors=6, gene_neighbors=14): 
     
     # spatial graph
@@ -225,6 +316,51 @@ def lsi(
     X_lsi -= X_lsi.mean(axis=1, keepdims=True)
     X_lsi /= X_lsi.std(axis=1, ddof=1, keepdims=True)
     adata.obsm["X_lsi"] = X_lsi[:,1:]
+
+def lsi_scale(adata, n_components=201, use_highly_variable=None, **kwargs):
+    import sklearn.utils.extmath
+    from scipy.sparse import issparse
+    
+    if use_highly_variable is None:
+        use_highly_variable = "highly_variable" in adata.var
+    adata_use = adata[:, adata.var["highly_variable"]] if use_highly_variable else adata
+    
+    X = adata_use.X
+    
+    if issparse(X):
+        row_sums = np.array(X.sum(axis=1)).flatten()
+        row_sums[row_sums == 0] = 1.0 
+        X_tf = X.multiply(1.0 / row_sums[:, np.newaxis])
+        
+        col_sums = np.array(X.sum(axis=0)).flatten()
+        col_sums[col_sums == 0] = 1.0
+        idf = np.log(1.0 + X.shape[0] / col_sums)
+        
+        X_tfidf = X_tf.multiply(idf)
+    else:
+        tf = X / X.sum(axis=1, keepdims=True)
+        idf = np.log(1.0 + X.shape[0] / X.sum(axis=0))
+        X_tfidf = tf * idf
+
+    if issparse(X_tfidf):
+        scales = np.array(X_tfidf.sum(axis=1)).flatten()
+        scales[scales == 0] = 1.0
+        X_norm = X_tfidf.multiply(1e4 / scales[:, np.newaxis])
+        X_norm.data = np.log1p(X_norm.data) 
+    else:
+        X_norm = np.log1p((X_tfidf / X_tfidf.sum(axis=1, keepdims=True)) * 1e4)
+
+    U, Sigma, VT = sklearn.utils.extmath.randomized_svd(
+        X_norm, 
+        n_components=n_components, 
+        n_iter=5, 
+        random_state=42
+    )
+    
+    X_lsi = U * Sigma 
+    X_lsi -= X_lsi.mean(axis=0)
+    X_lsi /= X_lsi.std(axis=0, ddof=1)
+    adata.obsm["X_lsi"] = X_lsi[:, 1:].astype(np.float32)
 
     
 def tfidf(X):
