@@ -39,7 +39,7 @@ scanpy
 ```
 For specific setting, please see <a href="https://github.com/Philyzh8/SPHERE/blob/master/requirements.txt">requirements</a> or <a href="https://github.com/Philyzh8/SPHERE/blob/master/environment.yaml">environment</a>.
 
-# Installation Guide:
+# Installation Guide
 
 ### Install from PyPi
 
